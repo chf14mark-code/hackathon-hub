@@ -37,7 +37,8 @@ function TryItWidget({ defaultCode, defaultRegs = [0, 0, 0, 0], defaultMemOverri
     let m;
     if (warmPrevious) {
       m = rerunWarm(warmPrevious);
-      m.regs = [...regs]; 
+      m.regs = [...regs];
+      m.cache.enabled = cacheOn;
     } else {
       const fullMem = defaultMemory();
       for (let i = 0; i < 16; i++) fullMem[i] = mem[i];
@@ -74,19 +75,23 @@ function TryItWidget({ defaultCode, defaultRegs = [0, 0, 0, 0], defaultMemOverri
     setRunState({ trace, snap: s, stopped: steps === 20 && !isFinished(s, parsed.instrs), summary: summarize(s) });
   };
 
-  const setReg = (i, val) => {
-    const v = parseInt(val, 10);
-    const newRegs = [...regs];
-    newRegs[i] = isNaN(v) ? 0 : v;
-    setRegs(newRegs);
-  };
+const clamp16Bit = (val) => {
+  const v = parseInt(val, 10);
+  if (isNaN(v)) return 0;
+  return Math.max(0, Math.min(65535, v)); // Giới hạn chặt trong khoảng 0 - 65535
+};
 
-  const setCell = (i, val) => {
-    const v = parseInt(val, 10);
-    const newMem = [...mem];
-    newMem[i] = isNaN(v) ? 0 : v;
-    setMem(newMem);
-  };
+const setReg = (i, val) => {
+  const newRegs = [...regs];
+  newRegs[i] = clamp16Bit(val);
+  setRegs(newRegs);
+};
+
+const setCell = (i, val) => {
+  const newMem = [...mem];
+  newMem[i] = clamp16Bit(val);
+  setMem(newMem);
+};
 
   const btn = 'inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
   const btnPrimary = `${btn} border-slate-900 bg-slate-900 text-white hover:bg-slate-700`;
@@ -260,7 +265,7 @@ export default function Guide() {
           <h2 className="text-lg font-semibold mb-2">How to read an operand</h2>
           <ul className="list-disc pl-5 space-y-1 text-sm text-slate-800">
             <li><b>R0-R3</b>: A register (tiny, instant storage).</li>
-            <li><b>0-65535</b>: A plain number. Hexadecimal like <code>0x1F</code> is allowed.</li>
+            <li><b>0-65535</b>: A positive integer (0 to 65,535). Negative numbers are not supported. Hexadecimal like <code>0x1F</code> is allowed.</li>
             <li><b>[4]</b>: Memory cell 4.</li>
             <li><b>[R2]</b>: The memory cell whose address is currently stored in R2.</li>
           </ul>
@@ -451,9 +456,17 @@ export default function Guide() {
           </div>
           <p className="text-sm"><b>Changes:</b> Registers (R0-R3). Flags: none.</p>
           <p className="text-sm"><b>Cost:</b> 1 tick.</p>
+          <div className="text-sm bg-amber-50 text-amber-900 p-3 border-l-4 border-amber-500">
+            <b>⚠️ No negative numbers (Unsigned underflow):</b>
+            <p className="mt-1">
+              Registers only hold unsigned 16-bit numbers (0 to 65,535). If you subtract a larger number from a smaller number, the result cannot be negative. For example, <b>2 - 5</b> wraps around to <b>65,533</b> instead of -3.
+            </p>
+          </div>
+
           <div className="text-sm bg-red-50 text-red-900 p-3 border-l-4 border-red-600">
             <b>Common mistakes:</b>
             <ul className="list-disc pl-5 mt-1 space-y-1">
+              <li>Subtracting a larger number from a smaller number wraps around (e.g. 0 - 1 becomes 65,535) because negative numbers cannot be stored.</li>
               <li>SUB needs 2 operands, like "SUB R0, 1".</li>
               <li>Operand 1 of SUB is not valid. Example: "SUB R0, 1".</li>
             </ul>
